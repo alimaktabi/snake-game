@@ -15,7 +15,7 @@ function App() {
     return () => {
       clearInterval(interval)
     }
-  }, [refreshRatePeriod])
+  }, [refreshRatePeriod, repaint])
 
   return (
     <>

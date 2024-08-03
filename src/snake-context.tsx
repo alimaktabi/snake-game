@@ -3,6 +3,7 @@ import {
   FC,
   PropsWithChildren,
   useContext,
+  useEffect,
   useState,
 } from "react"
 
@@ -54,20 +55,7 @@ const tailImages = {
   down: "/Graphics/tail_down.png",
 }
 
-const renderImageToBlock = (
-  x: number,
-  y: number,
-  src: string,
-  ctx: CanvasRenderingContext2D
-) => {
-  const image = new Image()
-
-  image.onload = () => {
-    ctx.drawImage(image, x, y)
-  }
-
-  image.src = src
-}
+const appleImage = "/Graphics/apple.png"
 
 const SnakeContextProvider: FC<
   PropsWithChildren & { width: number; height: number; piecePixels: number }
@@ -82,6 +70,25 @@ const SnakeContextProvider: FC<
     [4, 1],
     [5, 1],
   ])
+
+  const [cachedImages, setCachedImages] = useState<{
+    [key: string]: HTMLImageElement
+  } | null>(null)
+
+  const renderImageToBlock = (
+    x: number,
+    y: number,
+    src: string,
+    ctx: CanvasRenderingContext2D
+  ) => {
+    if (!cachedImages) return
+
+    const image = cachedImages[src]
+
+    if (!image) return
+
+    ctx.drawImage(image, x, y)
+  }
 
   const renderApple = (context: CanvasRenderingContext2D) => {
     const [x, y] = applePosition
@@ -145,13 +152,50 @@ const SnakeContextProvider: FC<
   const repaint = (c: HTMLCanvasElement) => {
     const ctx = c.getContext("2d")
 
-    if (!ctx) return
+    if (!ctx || !cachedImages) return
 
     removePreviousPaint(ctx)
     renderBackgroundPieces(ctx)
     renderApple(ctx)
     renderSnake(ctx)
   }
+
+  useEffect(() => {
+    const cacheInitialImages = () => {
+      const images = [
+        ...Object.values(tailImages),
+        ...Object.values(bodyImages),
+        ...Object.values(headImages),
+        appleImage,
+      ]
+
+      Promise.all(
+        images.map((imageSrc) => {
+          const image = new Image()
+
+          const promise = new Promise<[string, HTMLImageElement]>((resolve) => {
+            image.onload = () => resolve([imageSrc, image])
+          })
+
+          image.src = imageSrc
+
+          return promise
+        })
+      ).then((images) => {
+        const result: { [key: string]: HTMLImageElement } = {}
+
+        images.reduce((prev, current) => {
+          prev[current[0]] = current[1]
+
+          return prev
+        }, result)
+
+        setCachedImages(result)
+      })
+    }
+
+    cacheInitialImages()
+  }, [])
 
   return (
     <SnakeContext.Provider
