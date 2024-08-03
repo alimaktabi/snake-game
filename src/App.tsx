@@ -4,7 +4,8 @@ import { useSnakeContext } from "./snake-context"
 function App() {
   const canvas = useRef<HTMLCanvasElement>(null)
 
-  const { refreshRatePeriod, repaint, height, width } = useSnakeContext()
+  const { refreshRatePeriod, repaint, height, width, snakeMovePosition } =
+    useSnakeContext()
 
   useEffect(() => {
     const interval = setInterval(
@@ -20,6 +21,8 @@ function App() {
   return (
     <>
       <canvas ref={canvas} width={width} height={height}></canvas>
+
+      <p>Snake move position: {snakeMovePosition}</p>
     </>
   )
 }

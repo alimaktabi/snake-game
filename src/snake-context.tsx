@@ -12,6 +12,7 @@ export type SnakeContextType = {
   piecePixels: number
   width: number
   height: number
+  snakeMovePosition: MovingAngle
 
   repaint?: (element: HTMLCanvasElement) => void
 }
@@ -23,6 +24,7 @@ export const SnakeContext = createContext<SnakeContextType>({
   piecePixels: 30,
   width: 600,
   height: 300,
+  snakeMovePosition: "right",
 })
 
 // 30
@@ -35,8 +37,8 @@ const blockNumber2 = "#22c55e"
 const headImages = {
   left: "/Graphics/head_left.png",
   right: "/Graphics/head_right.png",
-  up: "/Graphics/head_up.png",
-  down: "/Graphics/head_down.png",
+  top: "/Graphics/head_up.png",
+  bottom: "/Graphics/head_down.png",
 }
 
 const bodyImages = {
@@ -57,11 +59,74 @@ const tailImages = {
 
 const appleImage = "/Graphics/apple.png"
 
+export type Block = [number, number]
+
+const resolveTailPosition = (block: Block, nextBlock: Block) => {
+  if (nextBlock[0] > block[0]) {
+    return "left"
+  }
+  if (nextBlock[0] < block[0]) {
+    return "right"
+  }
+
+  if (nextBlock[1] < block[1]) {
+    return "down"
+  }
+
+  return "up"
+}
+
+const resolveBodyPosition = (
+  beforeBlock: Block,
+  block: Block,
+  afterBlock: Block
+) => {
+  if (beforeBlock[1] == block[1] && block[1] == afterBlock[1])
+    return "horizontal"
+
+  if (beforeBlock[0] == block[0] && block[0] == afterBlock[0]) return "vertical"
+
+  if (beforeBlock[0] < block[0] && block[1] < afterBlock[1]) return "bottomleft"
+
+  if (beforeBlock[0] > block[0] && block[1] < afterBlock[1])
+    return "bottomright"
+
+  if (beforeBlock[1] > block[1] && block[0] > afterBlock[0]) return "topleft"
+
+  if (beforeBlock[1] < block[1] && block[0] < afterBlock[0]) return "topright"
+}
+
+const reEvaluateIfOutOfBounds = (
+  block: Block,
+  width: number,
+  height: number,
+  piecePixels: number
+): Block => {
+  if (block[0] < 0) {
+    return [width / piecePixels, block[1]]
+  }
+  if (block[1] < 0) {
+    return [block[0], height / piecePixels]
+  }
+  if (block[0] * piecePixels > width) {
+    return [0, block[1]]
+  }
+  if (block[1] * piecePixels > height) {
+    return [block[0], 0]
+  }
+
+  return block
+}
+
+export type MovingAngle = "right" | "left" | "bottom" | "top"
+
 const SnakeContextProvider: FC<
   PropsWithChildren & { width: number; height: number; piecePixels: number }
 > = ({ children, width, height, piecePixels }) => {
   const [applePosition, setApplePosition] = useState([1, 1])
-  const [snakePositions, setSnakePositions] = useState<[number, number][]>([
+  const [snakeMovePosition, setSnakeMovePosition] =
+    useState<MovingAngle>("right")
+  const [snakePositions, setSnakePositions] = useState<Block[]>([
     [0, 0],
     [1, 0],
     [2, 0],
@@ -120,34 +185,67 @@ const SnakeContextProvider: FC<
 
     const tail = snakePositions[0]
     const head = snakePositions.at(-1)!
+    const bodySlices = snakePositions.slice(1, -1)
 
     renderImageToBlock(
       head[0] * piecePixels,
       head[1] * piecePixels,
-      headImages.right,
+      headImages[snakeMovePosition],
       ctx
     )
 
     renderImageToBlock(
       tail[0] * piecePixels,
       tail[1] * piecePixels,
-      tailImages.left,
+      tailImages[resolveTailPosition(tail, bodySlices[0])],
       ctx
     )
 
-    const bodySlices = snakePositions.slice(1, -1)
+    let previousBlock = tail
+    let counter = 1
 
     for (const slice of bodySlices) {
+      let nextBlock = bodySlices[counter] ?? head
       renderImageToBlock(
         slice[0] * piecePixels,
         slice[1] * piecePixels,
-        bodyImages.horizontal,
+        bodyImages[resolveBodyPosition(previousBlock, slice, nextBlock)!],
         ctx
       )
+      previousBlock = slice
+      counter++
     }
   }
 
-  const moveSnakeToTheFront = () => {}
+  const moveSnakeToTheFront = () => {
+    snakePositions.splice(0, 1)
+
+    const head = snakePositions.at(-1)!
+
+    let newPosition: Block
+
+    switch (snakeMovePosition) {
+      case "bottom":
+        newPosition = [head[0], head[1] + 1]
+        break
+      case "top":
+        newPosition = [head[0], head[1] - 1]
+        break
+
+      case "right":
+        newPosition = [head[0] + 1, head[1]]
+        break
+      case "left":
+        newPosition = [head[0] - 1, head[1]]
+        break
+    }
+
+    snakePositions.push(
+      reEvaluateIfOutOfBounds(newPosition, width, height, piecePixels)
+    )
+
+    setSnakePositions([...snakePositions])
+  }
 
   const repaint = (c: HTMLCanvasElement) => {
     const ctx = c.getContext("2d")
@@ -158,6 +256,7 @@ const SnakeContextProvider: FC<
     renderBackgroundPieces(ctx)
     renderApple(ctx)
     renderSnake(ctx)
+    moveSnakeToTheFront()
   }
 
   useEffect(() => {
@@ -197,14 +296,43 @@ const SnakeContextProvider: FC<
     cacheInitialImages()
   }, [])
 
+  useEffect(() => {
+    const onKeyboardPressed = (e: KeyboardEvent) => {
+      switch (e.code) {
+        case "ArrowUp":
+          setSnakeMovePosition("top")
+          return
+
+        case "ArrowDown":
+          setSnakeMovePosition("bottom")
+          return
+
+        case "ArrowLeft":
+          setSnakeMovePosition("left")
+          return
+
+        case "ArrowRight":
+          setSnakeMovePosition("right")
+          return
+      }
+    }
+
+    document.addEventListener("keydown", onKeyboardPressed)
+
+    return () => {
+      document.removeEventListener("keydown", onKeyboardPressed)
+    }
+  }, [])
+
   return (
     <SnakeContext.Provider
       value={{
-        refreshRatePeriod: 1000,
+        refreshRatePeriod: 300,
         piecePixels,
         repaint,
         width,
         height,
+        snakeMovePosition,
       }}
     >
       {children}
