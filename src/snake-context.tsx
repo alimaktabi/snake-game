@@ -4,6 +4,7 @@ import {
   PropsWithChildren,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react"
 
@@ -13,6 +14,8 @@ export type SnakeContextType = {
   width: number
   height: number
   snakeMovePosition: MovingAngle
+  isGameOver: boolean
+  score: number
 
   repaint?: (element: HTMLCanvasElement) => void
 }
@@ -25,6 +28,8 @@ export const SnakeContext = createContext<SnakeContextType>({
   width: 600,
   height: 300,
   snakeMovePosition: "right",
+  isGameOver: false,
+  score: 0,
 })
 
 // 30
@@ -86,14 +91,29 @@ const resolveBodyPosition = (
 
   if (beforeBlock[0] == block[0] && block[0] == afterBlock[0]) return "vertical"
 
-  if (beforeBlock[0] < block[0] && block[1] < afterBlock[1]) return "bottomleft"
+  if (
+    (beforeBlock[0] < block[0] && block[1] < afterBlock[1]) ||
+    (afterBlock[0] < block[0] && beforeBlock[1] > block[1])
+  )
+    return "bottomleft" // TODO: fix these conditions
 
-  if (beforeBlock[0] > block[0] && block[1] < afterBlock[1])
+  if (
+    (beforeBlock[0] > block[0] && block[1] < afterBlock[1]) ||
+    (afterBlock[0] > block[0] && block[1] < beforeBlock[1])
+  )
     return "bottomright"
 
-  if (beforeBlock[1] > block[1] && block[0] > afterBlock[0]) return "topleft"
+  if (
+    (beforeBlock[0] < block[0] && block[1] > afterBlock[1]) ||
+    (afterBlock[0] < block[0] && block[1] > beforeBlock[1])
+  )
+    return "topleft"
 
-  if (beforeBlock[1] < block[1] && block[0] < afterBlock[0]) return "topright"
+  if (
+    (beforeBlock[1] < block[1] && block[0] < afterBlock[0]) ||
+    (afterBlock[1] < block[1] && block[0] < beforeBlock[0])
+  )
+    return "topright"
 }
 
 const reEvaluateIfOutOfBounds = (
@@ -108,10 +128,10 @@ const reEvaluateIfOutOfBounds = (
   if (block[1] < 0) {
     return [block[0], height / piecePixels]
   }
-  if (block[0] * piecePixels > width) {
+  if (block[0] * piecePixels >= width) {
     return [0, block[1]]
   }
-  if (block[1] * piecePixels > height) {
+  if (block[1] * piecePixels >= height) {
     return [block[0], 0]
   }
 
@@ -120,13 +140,45 @@ const reEvaluateIfOutOfBounds = (
 
 export type MovingAngle = "right" | "left" | "bottom" | "top"
 
+const isPositionsEqual = (position1: Block, position2: Block) => {
+  return position1[0] === position2[0] && position1[1] === position2[1]
+}
+
+const chooseFreeRandomBlock = (
+  width: number,
+  height: number,
+  piecePixels: number,
+  blockedPositions: Block[]
+): Block => {
+  const allBlocks: Block[] = []
+
+  for (let x = 0; x < width / piecePixels; x++) {
+    for (let y = 0; y < height / piecePixels; y++) {
+      allBlocks.push([x, y])
+    }
+  }
+
+  const freeBlocks = allBlocks.filter(
+    (block) =>
+      !blockedPositions.some((blocked) => isPositionsEqual(block, blocked))
+  )
+
+  if (freeBlocks.length === 0) {
+    throw new Error("No free blocks available")
+  }
+
+  const randomIndex = Math.floor(Math.random() * freeBlocks.length)
+
+  return freeBlocks[randomIndex]
+}
+
 const SnakeContextProvider: FC<
   PropsWithChildren & { width: number; height: number; piecePixels: number }
 > = ({ children, width, height, piecePixels }) => {
-  const [applePosition, setApplePosition] = useState([1, 1])
-  const [snakeMovePosition, setSnakeMovePosition] =
-    useState<MovingAngle>("right")
-  const [snakePositions, setSnakePositions] = useState<Block[]>([
+  const [isGameOver, setIsGameOver] = useState(false)
+  const applePosition = useRef<Block>([1, 1])
+  const snakeMovePosition = useRef<MovingAngle>("right")
+  const snakePositions = useRef<Block[]>([
     [0, 0],
     [1, 0],
     [2, 0],
@@ -135,6 +187,7 @@ const SnakeContextProvider: FC<
     [4, 1],
     [5, 1],
   ])
+  const [renderTrigger, setRenderTrigger] = useState(false)
 
   const [cachedImages, setCachedImages] = useState<{
     [key: string]: HTMLImageElement
@@ -156,7 +209,7 @@ const SnakeContextProvider: FC<
   }
 
   const renderApple = (context: CanvasRenderingContext2D) => {
-    const [x, y] = applePosition
+    const [x, y] = applePosition.current
     renderImageToBlock(
       x * piecePixels,
       y * piecePixels,
@@ -180,17 +233,17 @@ const SnakeContextProvider: FC<
   }
 
   const renderSnake = (ctx: CanvasRenderingContext2D) => {
-    if (snakePositions.length < 3)
+    if (snakePositions.current.length < 3)
       throw new Error("Cannot render snake because the length is lower than 3")
 
-    const tail = snakePositions[0]
-    const head = snakePositions.at(-1)!
-    const bodySlices = snakePositions.slice(1, -1)
+    const tail = snakePositions.current[0]
+    const head = snakePositions.current.at(-1)!
+    const bodySlices = snakePositions.current.slice(1, -1)
 
     renderImageToBlock(
       head[0] * piecePixels,
       head[1] * piecePixels,
-      headImages[snakeMovePosition],
+      headImages[snakeMovePosition.current],
       ctx
     )
 
@@ -218,13 +271,14 @@ const SnakeContextProvider: FC<
   }
 
   const moveSnakeToTheFront = () => {
-    snakePositions.splice(0, 1)
+    const removedPosition = snakePositions.current[0]
+    snakePositions.current.splice(0, 1)
 
-    const head = snakePositions.at(-1)!
+    const head = snakePositions.current.at(-1)!
 
     let newPosition: Block
 
-    switch (snakeMovePosition) {
+    switch (snakeMovePosition.current) {
       case "bottom":
         newPosition = [head[0], head[1] + 1]
         break
@@ -240,23 +294,62 @@ const SnakeContextProvider: FC<
         break
     }
 
-    snakePositions.push(
+    snakePositions.current.push(
       reEvaluateIfOutOfBounds(newPosition, width, height, piecePixels)
     )
 
-    setSnakePositions([...snakePositions])
+    return removedPosition
+  }
+
+  const checkIfHitApple = (tempRemovedPosition: Block) => {
+    const head = snakePositions.current.at(-1)!
+
+    if (isPositionsEqual(head, applePosition.current)) {
+      snakePositions.current.unshift(tempRemovedPosition)
+      applePosition.current = chooseFreeRandomBlock(
+        width,
+        height,
+        piecePixels,
+        snakePositions.current
+      )
+
+      setRenderTrigger((value) => !value)
+
+      return true
+    }
+
+    return false
+  }
+
+  const checkIfGameOver = () => {
+    const seenBlocks = new Set()
+
+    for (const block of snakePositions.current) {
+      const blockKey = block.toString()
+
+      if (seenBlocks.has(blockKey)) {
+        setIsGameOver(true)
+        return true
+      }
+
+      seenBlocks.add(blockKey)
+    }
+
+    return false
   }
 
   const repaint = (c: HTMLCanvasElement) => {
     const ctx = c.getContext("2d")
 
-    if (!ctx || !cachedImages) return
+    if (!ctx || !cachedImages || isGameOver) return
 
     removePreviousPaint(ctx)
     renderBackgroundPieces(ctx)
+    const tempRemovedPosition = moveSnakeToTheFront()
+    checkIfHitApple(tempRemovedPosition)
+    checkIfGameOver()
     renderApple(ctx)
     renderSnake(ctx)
-    moveSnakeToTheFront()
   }
 
   useEffect(() => {
@@ -300,19 +393,39 @@ const SnakeContextProvider: FC<
     const onKeyboardPressed = (e: KeyboardEvent) => {
       switch (e.code) {
         case "ArrowUp":
-          setSnakeMovePosition("top")
+          if (
+            snakeMovePosition.current === "bottom" ||
+            snakeMovePosition.current === "top"
+          )
+            return
+          snakeMovePosition.current = "top"
           return
 
         case "ArrowDown":
-          setSnakeMovePosition("bottom")
+          if (
+            snakeMovePosition.current === "top" ||
+            snakeMovePosition.current === "bottom"
+          )
+            return
+          snakeMovePosition.current = "bottom"
           return
 
         case "ArrowLeft":
-          setSnakeMovePosition("left")
+          if (
+            snakeMovePosition.current === "right" ||
+            snakeMovePosition.current === "left"
+          )
+            return
+          snakeMovePosition.current = "left"
           return
 
         case "ArrowRight":
-          setSnakeMovePosition("right")
+          if (
+            snakeMovePosition.current === "left" ||
+            snakeMovePosition.current === "right"
+          )
+            return
+          snakeMovePosition.current = "right"
           return
       }
     }
@@ -332,7 +445,9 @@ const SnakeContextProvider: FC<
         repaint,
         width,
         height,
-        snakeMovePosition,
+        snakeMovePosition: snakeMovePosition.current,
+        isGameOver,
+        score: snakePositions.current.length,
       }}
     >
       {children}

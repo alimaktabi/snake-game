@@ -4,8 +4,15 @@ import { useSnakeContext } from "./snake-context"
 function App() {
   const canvas = useRef<HTMLCanvasElement>(null)
 
-  const { refreshRatePeriod, repaint, height, width, snakeMovePosition } =
-    useSnakeContext()
+  const {
+    refreshRatePeriod,
+    repaint,
+    height,
+    width,
+    snakeMovePosition,
+    isGameOver,
+    score,
+  } = useSnakeContext()
 
   useEffect(() => {
     const interval = setInterval(
@@ -20,9 +27,18 @@ function App() {
 
   return (
     <>
-      <canvas ref={canvas} width={width} height={height}></canvas>
+      <div className="relative" style={{ width }}>
+        {isGameOver && (
+          <div className="absolute bg-black/40 inset-0 grid place-items-center">
+            <h3 className="text-white">GAME OVER</h3>
+          </div>
+        )}
+
+        <canvas ref={canvas} width={width} height={height}></canvas>
+      </div>
 
       <p>Snake move position: {snakeMovePosition}</p>
+      <p>Score so far: {score}</p>
     </>
   )
 }
