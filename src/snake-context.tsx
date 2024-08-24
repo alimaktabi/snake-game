@@ -66,6 +66,26 @@ const appleImage = "/Graphics/apple.png"
 
 export type Block = [number, number]
 
+const resolveNeighborPosition = (block: Block, block2: Block) => {
+  if (block[0] === block2[0]) {
+    if (block[1] < block2[1]) {
+      return "bottom"
+    }
+
+    return "top"
+  }
+
+  if (block[1] === block2[1]) {
+    if (block[0] < block2[0]) {
+      return "right"
+    }
+
+    return "left"
+  }
+
+  return "invalid"
+}
+
 const resolveTailPosition = (block: Block, nextBlock: Block) => {
   if (nextBlock[0] > block[0]) {
     return "left"
@@ -187,6 +207,8 @@ const SnakeContextProvider: FC<
     [4, 1],
     [5, 1],
   ])
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [renderTrigger, setRenderTrigger] = useState(false)
 
   const [cachedImages, setCachedImages] = useState<{
@@ -258,7 +280,7 @@ const SnakeContextProvider: FC<
     let counter = 1
 
     for (const slice of bodySlices) {
-      let nextBlock = bodySlices[counter] ?? head
+      const nextBlock = bodySlices[counter] ?? head
       renderImageToBlock(
         slice[0] * piecePixels,
         slice[1] * piecePixels,
@@ -391,11 +413,19 @@ const SnakeContextProvider: FC<
 
   useEffect(() => {
     const onKeyboardPressed = (e: KeyboardEvent) => {
+      console.log(
+        resolveNeighborPosition(
+          snakePositions.current.at(-1)!,
+          snakePositions.current.at(-2)!
+        )
+      )
       switch (e.code) {
         case "ArrowUp":
           if (
-            snakeMovePosition.current === "bottom" ||
-            snakeMovePosition.current === "top"
+            resolveNeighborPosition(
+              snakePositions.current.at(-1)!,
+              snakePositions.current.at(-2)!
+            ) === "top"
           )
             return
           snakeMovePosition.current = "top"
@@ -403,8 +433,10 @@ const SnakeContextProvider: FC<
 
         case "ArrowDown":
           if (
-            snakeMovePosition.current === "top" ||
-            snakeMovePosition.current === "bottom"
+            resolveNeighborPosition(
+              snakePositions.current.at(-1)!,
+              snakePositions.current.at(-2)!
+            ) === "bottom"
           )
             return
           snakeMovePosition.current = "bottom"
@@ -412,8 +444,10 @@ const SnakeContextProvider: FC<
 
         case "ArrowLeft":
           if (
-            snakeMovePosition.current === "right" ||
-            snakeMovePosition.current === "left"
+            resolveNeighborPosition(
+              snakePositions.current.at(-1)!,
+              snakePositions.current.at(-2)!
+            ) === "left"
           )
             return
           snakeMovePosition.current = "left"
@@ -421,8 +455,10 @@ const SnakeContextProvider: FC<
 
         case "ArrowRight":
           if (
-            snakeMovePosition.current === "left" ||
-            snakeMovePosition.current === "right"
+            resolveNeighborPosition(
+              snakePositions.current.at(-1)!,
+              snakePositions.current.at(-2)!
+            ) === "right"
           )
             return
           snakeMovePosition.current = "right"
