@@ -209,7 +209,7 @@ const SnakeContextProvider: FC<
   ])
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [renderTrigger, setRenderTrigger] = useState(false)
+  const [, setRenderTrigger] = useState(false)
 
   const [cachedImages, setCachedImages] = useState<{
     [key: string]: HTMLImageElement
